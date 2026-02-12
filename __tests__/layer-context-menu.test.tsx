@@ -57,8 +57,7 @@ describe('LayerContextMenu', () => {
 
     // Setup layer actions mock
     mockUseGlobalLayerActions.mockReturnValue({
-      clipboard: { layer: null, isCut: false, sourceLayerId: null },
-      canPaste: false,
+      getCanPaste: jest.fn(() => false),
       canDuplicate: true,
       canDelete: true,
       canCut: true,
@@ -322,10 +321,9 @@ describe('LayerContextMenu', () => {
       expect(mockHandlePaste).not.toHaveBeenCalled();
     });
 
-    it('should call handlePaste when canPaste is true', () => {
+    it('should call handlePaste when getCanPaste returns true', () => {
       mockUseGlobalLayerActions.mockReturnValue({
-        clipboard: { layer: mockLayer, isCut: false, sourceLayerId: 'layer-1' },
-        canPaste: true,
+        getCanPaste: jest.fn(() => true),
         canDuplicate: true,
         canDelete: true,
         canCut: true,

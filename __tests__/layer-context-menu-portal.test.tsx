@@ -12,6 +12,7 @@ let mockContextMenuState = {
 };
 
 const mockCloseContextMenu = jest.fn();
+let mockClipboardLayer: ComponentLayer | null = null;
 
 jest.mock('@/lib/ui-builder/store/editor-store', () => ({
   useEditorStore: jest.fn((selector) => {
@@ -19,6 +20,7 @@ jest.mock('@/lib/ui-builder/store/editor-store', () => ({
       contextMenu: mockContextMenuState,
       closeContextMenu: mockCloseContextMenu,
       registry: {},
+      clipboard: { layer: mockClipboardLayer, isCut: false, sourceLayerId: null },
     };
     return selector(state);
   }),
@@ -83,8 +85,7 @@ const mockHandleDuplicate = jest.fn();
 
 jest.mock('@/lib/ui-builder/hooks/use-layer-actions', () => ({
   useGlobalLayerActions: jest.fn(() => ({
-    clipboard: { layer: null, isCut: false, sourceLayerId: null },
-    canPaste: true,
+    getCanPaste: jest.fn(() => false),
     canDuplicate: true,
     canDelete: true,
     canCut: true,
@@ -94,6 +95,11 @@ jest.mock('@/lib/ui-builder/hooks/use-layer-actions', () => ({
     handleDelete: mockHandleDelete,
     handleDuplicate: mockHandleDuplicate,
   })),
+}));
+
+// Mock paste validation (used by ContextMenuPortalItems for reactive canPaste)
+jest.mock('@/lib/ui-builder/utils/paste-validation', () => ({
+  canPasteLayer: jest.fn(() => true),
 }));
 
 // Mock schema utils
@@ -135,6 +141,7 @@ describe('LayerContextMenuPortal', () => {
     // Keep selectedLayerId matching the context menu layer to prevent auto-close
     mockSelectedLayerId = 'layer-1';
     mockFloatingElement = null;
+    mockClipboardLayer = null;
     mockFindLayerById.mockReturnValue(mockLayer);
     // Reset to no iframe context by default
     mockFrameDocument = undefined;
@@ -306,6 +313,9 @@ describe('LayerContextMenuPortal', () => {
     });
 
     it('should call handlePaste and closeContextMenu when Paste is clicked', () => {
+      // Set clipboard so canPaste is true (computed locally from clipboardLayer)
+      mockClipboardLayer = mockLayer;
+
       render(<LayerContextMenuPortal />);
 
       const pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');

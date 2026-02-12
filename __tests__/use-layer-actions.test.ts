@@ -121,16 +121,14 @@ describe('useGlobalLayerActions', () => {
     mockCanPasteLayer.mockReturnValue(true);
   });
 
-  describe('clipboard initialization', () => {
-    it('should initialize with empty clipboard from editor store', () => {
+  describe('getCanPaste (imperative check)', () => {
+    it('should return false when clipboard is empty', () => {
       const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
 
-      expect(result.current.clipboard.layer).toBeNull();
-      expect(result.current.clipboard.isCut).toBe(false);
-      expect(result.current.clipboard.sourceLayerId).toBeNull();
+      expect(result.current.getCanPaste()).toBe(false);
     });
 
-    it('should use clipboard from editor store when it has content', () => {
+    it('should return true when clipboard has content and validation passes', () => {
       mockClipboard = {
         layer: mockLayer,
         isCut: false,
@@ -139,8 +137,61 @@ describe('useGlobalLayerActions', () => {
 
       const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
 
-      expect(result.current.clipboard.layer).toEqual(mockLayer);
-      expect(result.current.clipboard.sourceLayerId).toBe('layer-1');
+      expect(result.current.getCanPaste()).toBe(true);
+    });
+
+    it('should return false when validation fails', () => {
+      mockClipboard = {
+        layer: mockLayer,
+        isCut: false,
+        sourceLayerId: 'layer-1',
+      };
+      mockCanPasteLayer.mockReturnValue(false);
+
+      const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
+
+      expect(result.current.getCanPaste()).toBe(false);
+    });
+
+    it('should return false when no effective layer ID', () => {
+      (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
+        const state = {
+          selectedLayerId: null,
+          findLayerById: mockFindLayerById,
+          removeLayer: mockRemoveLayer,
+          duplicateLayer: mockDuplicateLayer,
+          addLayerDirect: mockAddLayerDirect,
+          isLayerAPage: mockIsLayerAPage,
+        };
+        return selector(state);
+      });
+
+      mockClipboard = {
+        layer: mockLayer,
+        isCut: false,
+        sourceLayerId: 'layer-1',
+      };
+
+      const { result } = renderHook(() => useGlobalLayerActions());
+
+      expect(result.current.getCanPaste()).toBe(false);
+    });
+
+    it('should read clipboard imperatively (not stale closure)', () => {
+      // Start with empty clipboard
+      const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
+
+      expect(result.current.getCanPaste()).toBe(false);
+
+      // Now put something in the clipboard (simulating a copy in another component)
+      mockClipboard = {
+        layer: mockLayer,
+        isCut: false,
+        sourceLayerId: 'layer-1',
+      };
+
+      // getCanPaste reads from getState(), so it should see the new value
+      expect(result.current.getCanPaste()).toBe(true);
     });
   });
 
@@ -503,38 +554,6 @@ describe('useGlobalLayerActions', () => {
     });
   });
 
-  describe('canPaste', () => {
-    it('should return canPaste as false when clipboard is empty', () => {
-      const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
-
-      expect(result.current.canPaste).toBe(false);
-    });
-
-    it('should return canPaste as true when clipboard has content and validation passes', () => {
-      mockClipboard = {
-        layer: mockLayer,
-        isCut: false,
-        sourceLayerId: 'layer-1',
-      };
-
-      const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
-
-      expect(result.current.canPaste).toBe(true);
-    });
-
-    it('should return canPaste as false when validation fails', () => {
-      mockClipboard = {
-        layer: mockLayer,
-        isCut: false,
-        sourceLayerId: 'layer-1',
-      };
-      mockCanPasteLayer.mockReturnValue(false);
-
-      const { result } = renderHook(() => useGlobalLayerActions('layer-1'));
-
-      expect(result.current.canPaste).toBe(false);
-    });
-  });
 
   describe('uses selected layer when no layerId provided', () => {
     it('should use selectedLayerId when no layerId is passed', () => {
