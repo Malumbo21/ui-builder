@@ -220,6 +220,29 @@ const generateVariableIdentifiers = (variables: Variable[]): Map<string, string>
   return identifierMap;
 };
 
+// Helper function to generate unique identifiers for function metadata IDs
+const generateFunctionIdentifiers = (functionIds: Set<string>, reservedIdentifiers?: Set<string>): Map<string, string> => {
+  const identifierMap = new Map<string, string>();
+  const usedIdentifiers = new Set<string>(reservedIdentifiers);
+  
+  functionIds.forEach(funcId => {
+    const baseIdentifier = toValidIdentifier(funcId);
+    let identifier = baseIdentifier;
+    let counter = 1;
+    
+    // Ensure uniqueness
+    while (usedIdentifiers.has(identifier)) {
+      identifier = `${baseIdentifier}${counter}`;
+      counter++;
+    }
+    
+    usedIdentifiers.add(identifier);
+    identifierMap.set(funcId, identifier);
+  });
+  
+  return identifierMap;
+};
+
 // Helper function to collect all __function_* metadata function IDs from layers
 const collectFunctionMetadataIds = (layer: ComponentLayer): Set<string> => {
   const functionIds = new Set<string>();
@@ -254,8 +277,14 @@ export const pageLayerToCode = (
   // Generate unique identifiers for all variables
   const variableIdentifiers = generateVariableIdentifiers(variables);
   
-  // Collect all function IDs from __function_* metadata across all layers
+  // Collect all function IDs from __function_* metadata across all layers,
+  // including the page's own restOfProps (the wrapper div may have function bindings)
   const functionMetadataIds = new Set<string>();
+  for (const [key, value] of Object.entries(restOfProps)) {
+    if (key.startsWith('__function_') && typeof value === 'string') {
+      functionMetadataIds.add(value);
+    }
+  }
   if (Array.isArray(layers)) {
     layers.forEach(layer => {
       const layerFuncIds = collectFunctionMetadataIds(layer);
@@ -263,7 +292,10 @@ export const pageLayerToCode = (
     });
   }
   
-  const pageProps = generatePropsString(restOfProps, variables, variableIdentifiers);
+  // Generate unique sanitized identifiers for function metadata IDs
+  const functionIdentifiers = generateFunctionIdentifiers(functionMetadataIds);
+  
+  const pageProps = generatePropsString(restOfProps, variables, variableIdentifiers, functionIdentifiers);
   const imports = new Set<string>();
 
   const collectImports = (layer: ComponentLayer) => {
@@ -283,7 +315,7 @@ export const pageLayerToCode = (
 
   if (Array.isArray(layers)) {
     layers.forEach(collectImports);
-    code = layers.map((layer) => generateLayerCode(layer, 1, variables, variableIdentifiers)).join("\n");
+    code = layers.map((layer) => generateLayerCode(layer, 1, variables, variableIdentifiers, functionIdentifiers)).join("\n");
   } else {
     code = `{"${ layers }"}`;
   }
@@ -295,7 +327,8 @@ export const pageLayerToCode = (
     variables, 
     variableIdentifiers, 
     functionMetadataIds,
-    functionRegistry
+    functionRegistry,
+    functionIdentifiers
   );
   
   // Determine which props to destructure based on variable types and function metadata
@@ -328,7 +361,7 @@ export const pageLayerToCode = (
 
 };
 
-export const generateLayerCode = (layer: ComponentLayer, indent = 0, variables: Variable[] = [], variableIdentifiers?: Map<string, string>): string => {
+export const generateLayerCode = (layer: ComponentLayer, indent = 0, variables: Variable[] = [], variableIdentifiers?: Map<string, string>, functionIdentifiers?: Map<string, string>): string => {
   // Generate identifiers if not provided
   if (!variableIdentifiers && variables.length > 0) {
     variableIdentifiers = generateVariableIdentifiers(variables);
@@ -339,7 +372,7 @@ export const generateLayerCode = (layer: ComponentLayer, indent = 0, variables: 
   let childrenCode = "";
   if (hasLayerChildren(layer) && layer.children.length > 0) {
     childrenCode = layer.children
-      .map((child) => generateLayerCode(child, indent + 1, variables, variableIdentifiers))
+      .map((child) => generateLayerCode(child, indent + 1, variables, variableIdentifiers, functionIdentifiers))
       .join("\n");
   }
   //else if children is a string, then we need render children as a text node
@@ -351,14 +384,15 @@ export const generateLayerCode = (layer: ComponentLayer, indent = 0, variables: 
     return `${ indentation }<${ layer.type }${ generatePropsString(
       layer.props,
       variables,
-      variableIdentifiers
+      variableIdentifiers,
+      functionIdentifiers
     ) }>\n${ childrenCode }\n${ indentation }</${ layer.type }>`;
   } else {
-    return `${ indentation }<${ layer.type }${ generatePropsString(layer.props, variables, variableIdentifiers) } />`;
+    return `${ indentation }<${ layer.type }${ generatePropsString(layer.props, variables, variableIdentifiers, functionIdentifiers) } />`;
   }
 };
 
-export const generatePropsString = (props: Record<string, any>, variables: Variable[] = [], variableIdentifiers?: Map<string, string>): string => {
+export const generatePropsString = (props: Record<string, any>, variables: Variable[] = [], variableIdentifiers?: Map<string, string>, functionIdentifiers?: Map<string, string>): string => {
   // Generate identifiers if not provided
   if (!variableIdentifiers && variables.length > 0) {
     variableIdentifiers = generateVariableIdentifiers(variables);
@@ -407,8 +441,10 @@ export const generatePropsString = (props: Record<string, any>, variables: Varia
     });
 
   // Add function props from __function_* metadata
+  // Sanitize function IDs through functionIdentifiers to ensure valid JS identifiers
   functionMetadata.forEach((funcId, propName) => {
-    propsArray.push(`${propName}={functions.${funcId}}`);
+    const sanitizedId = functionIdentifiers?.get(funcId) ?? toValidIdentifier(funcId);
+    propsArray.push(`${propName}={functions.${sanitizedId}}`);
   });
 
   return propsArray.length > 0 ? ` ${ propsArray.join(" ") }` : "";
@@ -418,7 +454,8 @@ const generateVariablePropsInterface = (
   variables: Variable[], 
   variableIdentifiers?: Map<string, string>,
   functionMetadataIds?: Set<string>,
-  functionRegistry?: FunctionRegistry
+  functionRegistry?: FunctionRegistry,
+  functionIdentifiers?: Map<string, string>
 ): string => {
   const hasFunctionMetadata = functionMetadataIds && functionMetadataIds.size > 0;
   
@@ -471,27 +508,43 @@ const generateVariablePropsInterface = (
     return `    ${variableIdentifiers!.get(variable.id)}: (...args: unknown[]) => unknown;`;
   });
   
+  // Track function IDs already covered by function-type variables so we can
+  // skip them when generating metadata entries (avoids duplicate interface members
+  // when a variable binding and a __function_* metadata entry reference the same ID).
+  const coveredFunctionIds = new Set<string>();
+  for (const variable of functionVariables) {
+    const funcId = variable.defaultValue;
+    if (typeof funcId === 'string') {
+      coveredFunctionIds.add(funcId);
+    }
+  }
+
   // Generate function types from __function_* metadata (function registry references)
+  // Sanitize function IDs through functionIdentifiers to ensure valid TS interface member names
+  // Skip any function IDs already emitted via function-type variables above.
   const functionMetadataTypes = hasFunctionMetadata
-    ? Array.from(functionMetadataIds).map(funcId => {
-        const funcDef = functionRegistry?.[funcId];
-        
-        // Use explicit typeSignature if provided, otherwise infer from schema
-        if (funcDef?.typeSignature) {
-          return `    ${funcId}: ${funcDef.typeSignature};`;
-        }
-        
-        if (funcDef?.schema) {
-          const typeString = zodSchemaToTypeString(funcDef.schema);
-          return `    ${funcId}: ${typeString};`;
-        }
-        
-        // Fallback to generic function type
-        return `    ${funcId}: (...args: unknown[]) => unknown;`;
-      })
+    ? Array.from(functionMetadataIds)
+        .filter(funcId => !coveredFunctionIds.has(funcId))
+        .map(funcId => {
+          const funcDef = functionRegistry?.[funcId];
+          const sanitizedId = functionIdentifiers?.get(funcId) ?? toValidIdentifier(funcId);
+          
+          // Use explicit typeSignature if provided, otherwise infer from schema
+          if (funcDef?.typeSignature) {
+            return `    ${sanitizedId}: ${funcDef.typeSignature};`;
+          }
+          
+          if (funcDef?.schema) {
+            const typeString = zodSchemaToTypeString(funcDef.schema);
+            return `    ${sanitizedId}: ${typeString};`;
+          }
+          
+          // Fallback to generic function type
+          return `    ${sanitizedId}: (...args: unknown[]) => unknown;`;
+        })
     : [];
   
-  // Combine all function types (deduplicate in case of overlap)
+  // Combine function types (metadata entries already deduplicated against variable entries above)
   const allFunctionTypes = [...functionVariableTypes, ...functionMetadataTypes].join('\n');
 
   // Build the interface
