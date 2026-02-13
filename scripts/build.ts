@@ -140,7 +140,7 @@ function getDependencies(): string[] {
         "react-zoom-pan-pinch",
         "object-hash",
         "@floating-ui/react",
-        "react-resizable-panels@2.1.9"
+        "react-resizable-panels"
     ];
 }
 
