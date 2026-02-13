@@ -165,7 +165,7 @@ function getRegistryDependencies(): string[] {
         "dropdown-menu",
         "scroll-area",
         "tabs",
-        "resizable@^2.1.9",
+        "resizable@2.1.9",
     ];
 }
 
