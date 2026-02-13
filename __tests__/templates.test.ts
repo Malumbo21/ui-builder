@@ -991,12 +991,11 @@ export default Page;
       expect(result).toContain('weirdHandler: (...args: unknown[]) => unknown;');
     });
 
-    it("should include metadata entry in interface when function variable has same function ID but different identifier", () => {
-      // Bug scenario: a function variable "myHandler" has defaultValue "submitForm"
-      // (the function ID). A different component uses __function_onSubmit = "submitForm".
-      // The interface must contain BOTH "myHandler" (from the variable) AND
-      // "submitForm" (from the metadata), because generatePropsString emits
-      // functions.myHandler for the variable ref and functions.submitForm for metadata.
+    it("should reuse variable identifier when metadata references the same underlying function", () => {
+      // When a function variable's defaultValue (the function ID) matches a
+      // metadata entry, they reference the same underlying function. The generated
+      // code should use the variable's identifier for both, resulting in one
+      // functions.xxx member instead of two.
       const variablesWithMatchingFuncId: Variable[] = [
         { id: 'var1', name: 'userName', type: 'string', defaultValue: 'John' },
         { id: 'fn1', name: 'myHandler', type: 'function', defaultValue: 'submitForm' },
@@ -1029,13 +1028,58 @@ export default Page;
 
       const result = pageLayerToCode(page, componentRegistry, variablesWithMatchingFuncId);
 
-      // Interface must include both identifiers
+      // Both should use the variable's identifier since they reference the same function
       expect(result).toContain('myHandler: (...args: unknown[]) => unknown;');
-      expect(result).toContain('submitForm: (...args: unknown[]) => unknown;');
-
-      // JSX must reference both
       expect(result).toContain('onClick={functions.myHandler}');
-      expect(result).toContain('onSubmit={functions.submitForm}');
+      expect(result).toContain('onSubmit={functions.myHandler}');
+
+      // Should NOT have a separate submitForm entry — same underlying function
+      expect(result).not.toContain('submitForm:');
+    });
+
+    it("should avoid identifier collision between function variable and metadata referencing different functions", () => {
+      // Bug case: variable name "clickHandler" produces identifier "clickHandler".
+      // Metadata function ID "click-handler" also sanitizes to "clickHandler".
+      // They reference DIFFERENT functions, so must get different identifiers.
+      // Without the fix, the dedup filter would drop the metadata entry and both
+      // JSX bindings would silently reference one functions.clickHandler member.
+      const variables: Variable[] = [
+        { id: 'fn1', name: 'clickHandler', type: 'function', defaultValue: 'someOtherFunc' },
+      ];
+
+      const page: ComponentLayer = {
+        id: "page1",
+        type: "_page_",
+        props: {},
+        children: [
+          {
+            id: "button1",
+            type: "Button",
+            props: {
+              onClick: { __variableRef: 'fn1' },
+            },
+            children: [],
+          },
+          {
+            id: "button2",
+            type: "Button",
+            props: {
+              __function_onSubmit: 'click-handler', // sanitizes to "clickHandler" — collision!
+            },
+            children: [],
+          },
+        ],
+      };
+
+      const result = pageLayerToCode(page, componentRegistry, variables);
+
+      // Variable should keep its own identifier
+      expect(result).toContain('onClick={functions.clickHandler}');
+      // Metadata should get a suffixed identifier to avoid collision
+      expect(result).toContain('onSubmit={functions.clickHandler1}');
+      // Both should appear in the interface as separate members
+      expect(result).toContain('clickHandler: (...args: unknown[]) => unknown;');
+      expect(result).toContain('clickHandler1: (...args: unknown[]) => unknown;');
     });
 
     it("should deduplicate when function variable identifier matches metadata identifier", () => {
