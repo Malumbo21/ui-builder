@@ -991,6 +991,95 @@ export default Page;
       expect(result).toContain('weirdHandler: (...args: unknown[]) => unknown;');
     });
 
+    it("should include metadata entry in interface when function variable has same function ID but different identifier", () => {
+      // Bug scenario: a function variable "myHandler" has defaultValue "submitForm"
+      // (the function ID). A different component uses __function_onSubmit = "submitForm".
+      // The interface must contain BOTH "myHandler" (from the variable) AND
+      // "submitForm" (from the metadata), because generatePropsString emits
+      // functions.myHandler for the variable ref and functions.submitForm for metadata.
+      const variablesWithMatchingFuncId: Variable[] = [
+        { id: 'var1', name: 'userName', type: 'string', defaultValue: 'John' },
+        { id: 'fn1', name: 'myHandler', type: 'function', defaultValue: 'submitForm' },
+      ];
+
+      const page: ComponentLayer = {
+        id: "page1",
+        type: "_page_",
+        props: {},
+        children: [
+          {
+            id: "button1",
+            type: "Button",
+            props: {
+              onClick: { __variableRef: 'fn1' }, // references function variable
+              label: { __variableRef: 'var1' },
+            },
+            children: [],
+          },
+          {
+            id: "button2",
+            type: "Button",
+            props: {
+              __function_onSubmit: 'submitForm', // same function ID as fn1's defaultValue
+            },
+            children: [],
+          },
+        ],
+      };
+
+      const result = pageLayerToCode(page, componentRegistry, variablesWithMatchingFuncId);
+
+      // Interface must include both identifiers
+      expect(result).toContain('myHandler: (...args: unknown[]) => unknown;');
+      expect(result).toContain('submitForm: (...args: unknown[]) => unknown;');
+
+      // JSX must reference both
+      expect(result).toContain('onClick={functions.myHandler}');
+      expect(result).toContain('onSubmit={functions.submitForm}');
+    });
+
+    it("should deduplicate when function variable identifier matches metadata identifier", () => {
+      // Edge case: variable name IS the same as the function ID, so identifiers match.
+      // Only one entry should appear in the interface (no duplicates).
+      const variablesWithSameName: Variable[] = [
+        { id: 'fn1', name: 'submitForm', type: 'function', defaultValue: 'submitForm' },
+      ];
+
+      const page: ComponentLayer = {
+        id: "page1",
+        type: "_page_",
+        props: {},
+        children: [
+          {
+            id: "button1",
+            type: "Button",
+            props: {
+              onClick: { __variableRef: 'fn1' },
+            },
+            children: [],
+          },
+          {
+            id: "button2",
+            type: "Button",
+            props: {
+              __function_onSubmit: 'submitForm',
+            },
+            children: [],
+          },
+        ],
+      };
+
+      const result = pageLayerToCode(page, componentRegistry, variablesWithSameName);
+
+      // Should have exactly one "submitForm" entry in the functions interface
+      const matches = result.match(/submitForm:/g);
+      expect(matches).toHaveLength(1);
+
+      // JSX should reference the same identifier for both
+      expect(result).toContain('onClick={functions.submitForm}');
+      expect(result).toContain('onSubmit={functions.submitForm}');
+    });
+
     it("should handle schema without _zod or _def", () => {
       // Schema that has neither _zod nor _def (intentionally invalid for edge case testing)
       const invalidSchema = {};
