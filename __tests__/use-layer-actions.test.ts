@@ -74,6 +74,22 @@ describe('useGlobalLayerActions', () => {
     sourceLayerId: null as string | null,
   };
 
+  // Helper to configure useLayerStore mock (both selector and getState)
+  function setupLayerStoreMock(overrides: Record<string, unknown> = {}) {
+    const state = {
+      selectedLayerId: 'layer-1',
+      findLayerById: mockFindLayerById,
+      removeLayer: mockRemoveLayer,
+      duplicateLayer: mockDuplicateLayer,
+      addLayerDirect: mockAddLayerDirect,
+      isLayerAPage: mockIsLayerAPage,
+      ...overrides,
+    };
+    const mockStore = useLayerStore as unknown as jest.Mock & { getState: () => typeof state };
+    mockStore.mockImplementation((selector) => selector(state));
+    mockStore.getState = () => state;
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -85,17 +101,7 @@ describe('useGlobalLayerActions', () => {
     };
 
     // Setup layer store mock
-    (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
-      const state = {
-        selectedLayerId: 'layer-1',
-        findLayerById: mockFindLayerById,
-        removeLayer: mockRemoveLayer,
-        duplicateLayer: mockDuplicateLayer,
-        addLayerDirect: mockAddLayerDirect,
-        isLayerAPage: mockIsLayerAPage,
-      };
-      return selector(state);
-    });
+    setupLayerStoreMock();
 
     // Setup editor store mock with clipboard
     // Use a getter function to always read the current mockClipboard value
@@ -154,17 +160,7 @@ describe('useGlobalLayerActions', () => {
     });
 
     it('should return false when no effective layer ID', () => {
-      (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
-        const state = {
-          selectedLayerId: null,
-          findLayerById: mockFindLayerById,
-          removeLayer: mockRemoveLayer,
-          duplicateLayer: mockDuplicateLayer,
-          addLayerDirect: mockAddLayerDirect,
-          isLayerAPage: mockIsLayerAPage,
-        };
-        return selector(state);
-      });
+      setupLayerStoreMock({ selectedLayerId: null });
 
       mockClipboard = {
         layer: mockLayer,
@@ -218,17 +214,7 @@ describe('useGlobalLayerActions', () => {
     });
 
     it('should not copy if no layer ID is provided and no layer is selected', () => {
-      (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
-        const state = {
-          selectedLayerId: null,
-          findLayerById: mockFindLayerById,
-          removeLayer: mockRemoveLayer,
-          duplicateLayer: mockDuplicateLayer,
-          addLayerDirect: mockAddLayerDirect,
-          isLayerAPage: mockIsLayerAPage,
-        };
-        return selector(state);
-      });
+      setupLayerStoreMock({ selectedLayerId: null });
 
       const { result } = renderHook(() => useGlobalLayerActions());
 
@@ -340,17 +326,7 @@ describe('useGlobalLayerActions', () => {
     });
 
     it('should not paste if no target layer ID', () => {
-      (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
-        const state = {
-          selectedLayerId: null,
-          findLayerById: mockFindLayerById,
-          removeLayer: mockRemoveLayer,
-          duplicateLayer: mockDuplicateLayer,
-          addLayerDirect: mockAddLayerDirect,
-          isLayerAPage: mockIsLayerAPage,
-        };
-        return selector(state);
-      });
+      setupLayerStoreMock({ selectedLayerId: null });
 
       const { result } = renderHook(() => useGlobalLayerActions());
 
@@ -452,17 +428,7 @@ describe('useGlobalLayerActions', () => {
     });
 
     it('should not delete if no layer ID', () => {
-      (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
-        const state = {
-          selectedLayerId: null,
-          findLayerById: mockFindLayerById,
-          removeLayer: mockRemoveLayer,
-          duplicateLayer: mockDuplicateLayer,
-          addLayerDirect: mockAddLayerDirect,
-          isLayerAPage: mockIsLayerAPage,
-        };
-        return selector(state);
-      });
+      setupLayerStoreMock({ selectedLayerId: null });
 
       const { result } = renderHook(() => useGlobalLayerActions());
 
@@ -509,17 +475,7 @@ describe('useGlobalLayerActions', () => {
     });
 
     it('should not duplicate if no layer ID', () => {
-      (useLayerStore as unknown as jest.Mock).mockImplementation((selector) => {
-        const state = {
-          selectedLayerId: null,
-          findLayerById: mockFindLayerById,
-          removeLayer: mockRemoveLayer,
-          duplicateLayer: mockDuplicateLayer,
-          addLayerDirect: mockAddLayerDirect,
-          isLayerAPage: mockIsLayerAPage,
-        };
-        return selector(state);
-      });
+      setupLayerStoreMock({ selectedLayerId: null });
 
       const { result } = renderHook(() => useGlobalLayerActions());
 
