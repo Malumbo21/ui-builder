@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
- 
+import { hasLayerChildren } from "@/lib/ui-builder/store/layer-utils";
+import type { ComponentRegistry, ComponentLayer, Variable, FunctionRegistry } from '@/components/ui/ui-builder/types';
+import { isVariableReference } from '@/lib/ui-builder/utils/variable-resolver';
+
 // Simple template renderer using native string replacement
 // Replaces variables in the format <%~ it.variableName %>
 const renderTemplate = (template: string, data: Record<string, any>): string => {
@@ -7,9 +10,6 @@ const renderTemplate = (template: string, data: Record<string, any>): string => 
     return data[key] ?? '';
   });
 };
-import { hasLayerChildren } from "@/lib/ui-builder/store/layer-utils";
-import type { ComponentRegistry, ComponentLayer, Variable, FunctionRegistry } from '@/components/ui/ui-builder/types';
-import { isVariableReference } from '@/lib/ui-builder/utils/variable-resolver';
 
 // Type for accessing Zod internal structure (works with both v3 and v4)
 interface ZodInternalDef {
