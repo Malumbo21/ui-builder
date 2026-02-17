@@ -527,5 +527,35 @@ describe('useGlobalLayerActions', () => {
         })
       );
     });
+
+    it('should pick up selection changes between render and handler invocation', () => {
+      // Start with selectedLayerId = 'layer-1'
+      const { result } = renderHook(() => useGlobalLayerActions());
+
+      // Simulate selection changing to a different layer after render
+      const layer2: ComponentLayer = {
+        id: 'layer-2',
+        type: 'div',
+        name: 'Second Layer',
+        props: {},
+        children: [],
+      };
+      setupLayerStoreMock({ selectedLayerId: 'layer-2' });
+      mockFindLayerById.mockImplementation((id: string) =>
+        id === 'layer-2' ? layer2 : undefined
+      );
+
+      // The handler should use the NEW selectedLayerId, not the stale one
+      act(() => {
+        result.current.handleCopy();
+      });
+
+      expect(mockFindLayerById).toHaveBeenCalledWith('layer-2');
+      expect(mockSetClipboard).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceLayerId: 'layer-2',
+        })
+      );
+    });
   });
 });
