@@ -242,7 +242,7 @@ describe('Variable Resolver', () => {
         consoleSpy.mockRestore();
       });
 
-      it('should warn when function registry is not provided for function-type variable', () => {
+      it('should silently return undefined when function registry is not provided for function-type variable', () => {
         const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
         const props = {
           onClick: { __variableRef: 'fn1' },
@@ -256,9 +256,7 @@ describe('Variable Resolver', () => {
         );
 
         expect(resolved.onClick).toBeUndefined();
-        expect(consoleSpy).toHaveBeenCalledWith(
-          'Function-type variable found but no functionRegistry provided'
-        );
+        expect(consoleSpy).not.toHaveBeenCalled();
         consoleSpy.mockRestore();
       });
 
@@ -358,7 +356,7 @@ describe('Variable Resolver', () => {
         expect(resolved.onClick).toBe(mockFunctionRegistry.mockClickHandler!.fn);
       });
 
-      it('should preserve original prop value and warn when __function_* metadata exists but no functionRegistry is provided', () => {
+      it('should preserve original prop value silently when __function_* metadata exists but no functionRegistry is provided', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
         
         const originalFn = () => 'original function';
@@ -381,11 +379,8 @@ describe('Variable Resolver', () => {
         // __function_onClick should not be in resolved props
         expect(resolved.__function_onClick).toBeUndefined();
         
-        // Should warn about missing function registry
-        expect(warnSpy).toHaveBeenCalledWith(
-          'Function metadata "__function_onClick" found but no functionRegistry provided. ' +
-          'Falling back to original prop value for "onClick".'
-        );
+        // Should NOT warn — callers intentionally omit the registry
+        expect(warnSpy).not.toHaveBeenCalled();
         
         warnSpy.mockRestore();
       });
