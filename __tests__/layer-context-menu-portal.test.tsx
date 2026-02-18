@@ -12,6 +12,7 @@ let mockContextMenuState = {
 };
 
 const mockCloseContextMenu = jest.fn();
+let mockClipboardLayer: ComponentLayer | null = null;
 
 jest.mock('@/lib/ui-builder/store/editor-store', () => ({
   useEditorStore: jest.fn((selector) => {
@@ -19,6 +20,7 @@ jest.mock('@/lib/ui-builder/store/editor-store', () => ({
       contextMenu: mockContextMenuState,
       closeContextMenu: mockCloseContextMenu,
       registry: {},
+      clipboard: { layer: mockClipboardLayer, isCut: false, sourceLayerId: null },
     };
     return selector(state);
   }),
@@ -83,8 +85,7 @@ const mockHandleDuplicate = jest.fn();
 
 jest.mock('@/lib/ui-builder/hooks/use-layer-actions', () => ({
   useGlobalLayerActions: jest.fn(() => ({
-    clipboard: { layer: null, isCut: false, sourceLayerId: null },
-    canPaste: true,
+    getCanPaste: jest.fn(() => false),
     canDuplicate: true,
     canDelete: true,
     canCut: true,
@@ -94,6 +95,11 @@ jest.mock('@/lib/ui-builder/hooks/use-layer-actions', () => ({
     handleDelete: mockHandleDelete,
     handleDuplicate: mockHandleDuplicate,
   })),
+}));
+
+// Mock paste validation (used by ContextMenuPortalItems for reactive canPaste)
+jest.mock('@/lib/ui-builder/utils/paste-validation', () => ({
+  canPasteLayer: jest.fn(() => true),
 }));
 
 // Mock schema utils
@@ -135,6 +141,7 @@ describe('LayerContextMenuPortal', () => {
     // Keep selectedLayerId matching the context menu layer to prevent auto-close
     mockSelectedLayerId = 'layer-1';
     mockFloatingElement = null;
+    mockClipboardLayer = null;
     mockFindLayerById.mockReturnValue(mockLayer);
     // Reset to no iframe context by default
     mockFrameDocument = undefined;
@@ -306,6 +313,9 @@ describe('LayerContextMenuPortal', () => {
     });
 
     it('should call handlePaste and closeContextMenu when Paste is clicked', () => {
+      // Set clipboard so canPaste is true (computed locally from clipboardLayer)
+      mockClipboardLayer = mockLayer;
+
       render(<LayerContextMenuPortal />);
 
       const pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
@@ -333,6 +343,87 @@ describe('LayerContextMenuPortal', () => {
 
       expect(mockHandleDelete).toHaveBeenCalled();
       expect(mockCloseContextMenu).toHaveBeenCalled();
+    });
+  });
+
+  describe('canPaste reactivity', () => {
+    beforeEach(() => {
+      mockContextMenuState = {
+        open: true,
+        x: 100,
+        y: 200,
+        layerId: 'layer-1',
+      };
+    });
+
+    it('should disable Paste when clipboard is empty', () => {
+      mockClipboardLayer = null;
+
+      render(<LayerContextMenuPortal />);
+
+      const pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
+      expect(pasteItem).toHaveClass('pointer-events-none');
+    });
+
+    it('should disable Paste when target layer is not found (selectedLayer is undefined)', () => {
+      mockClipboardLayer = mockLayer;
+      // Target layer does not exist
+      mockFindLayerById.mockReturnValue(undefined);
+
+      render(<LayerContextMenuPortal />);
+
+      const pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
+      expect(pasteItem).toHaveClass('pointer-events-none');
+    });
+
+    it('should disable Paste when canPasteLayer returns false', () => {
+      const { canPasteLayer: mockCanPasteLayer } = jest.requireMock('@/lib/ui-builder/utils/paste-validation');
+      mockCanPasteLayer.mockReturnValue(false);
+      mockClipboardLayer = mockLayer;
+
+      render(<LayerContextMenuPortal />);
+
+      const pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
+      expect(pasteItem).toHaveClass('pointer-events-none');
+    });
+
+    it('should enable Paste when clipboard is set and canPasteLayer returns true', () => {
+      const { canPasteLayer: mockCanPasteLayer } = jest.requireMock('@/lib/ui-builder/utils/paste-validation');
+      mockCanPasteLayer.mockReturnValue(true);
+      mockClipboardLayer = mockLayer;
+
+      render(<LayerContextMenuPortal />);
+
+      const pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
+      expect(pasteItem).not.toHaveClass('pointer-events-none');
+    });
+
+    it('should recompute canPaste when target layer changes', () => {
+      const { canPasteLayer: mockCanPasteLayer } = jest.requireMock('@/lib/ui-builder/utils/paste-validation');
+      mockClipboardLayer = mockLayer;
+
+      // Initially the layer can accept paste
+      mockCanPasteLayer.mockReturnValue(true);
+      const { rerender } = render(<LayerContextMenuPortal />);
+
+      let pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
+      expect(pasteItem).not.toHaveClass('pointer-events-none');
+
+      // Target layer changes: now it has string children and can't accept paste
+      mockCanPasteLayer.mockReturnValue(false);
+      const updatedLayer: ComponentLayer = {
+        id: 'layer-1',
+        type: 'span',
+        name: 'Updated Layer',
+        props: {},
+        children: 'text content',
+      };
+      mockFindLayerById.mockReturnValue(updatedLayer);
+
+      rerender(<LayerContextMenuPortal />);
+
+      pasteItem = screen.getByText('Paste').closest('[data-testid="menu-item"]');
+      expect(pasteItem).toHaveClass('pointer-events-none');
     });
   });
 

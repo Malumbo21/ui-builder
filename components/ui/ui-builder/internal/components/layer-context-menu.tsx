@@ -45,7 +45,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
     handlePaste,
     handleDelete,
     handleDuplicate,
-    canPaste,
+    getCanPaste,
   } = useGlobalLayerActions(layerId);
 
   // Handle right-click - open global context menu
@@ -88,6 +88,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
       {
         keys: SHORTCUTS.copy.keys,
         key: SHORTCUTS.copy.key,
+        preventDefault: false,
         handler: (e) => {
           if (isInputFocused()) return;
           e.preventDefault();
@@ -97,6 +98,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
       {
         keys: SHORTCUTS.cut.keys,
         key: SHORTCUTS.cut.key,
+        preventDefault: false,
         handler: (e) => {
           if (isInputFocused()) return;
           e.preventDefault();
@@ -106,9 +108,10 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
       {
         keys: SHORTCUTS.paste.keys,
         key: SHORTCUTS.paste.key,
+        preventDefault: false,
         handler: (e) => {
           if (isInputFocused()) return;
-          if (!canPaste) return;
+          if (!getCanPaste()) return;
           e.preventDefault();
           handlePaste();
         },
@@ -116,6 +119,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
       {
         keys: SHORTCUTS.duplicate.keys,
         key: SHORTCUTS.duplicate.key,
+        preventDefault: false,
         handler: (e) => {
           if (isInputFocused()) return;
           e.preventDefault();
@@ -125,6 +129,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
       {
         keys: SHORTCUTS.delete.keys,
         key: SHORTCUTS.delete.key,
+        preventDefault: false,
         handler: (e) => {
           if (isInputFocused()) return;
           e.preventDefault();
@@ -132,7 +137,7 @@ export const LayerContextMenu: React.FC<LayerContextMenuProps> = ({
         },
       },
     ];
-  }, [isSelected, canPaste, handleCopy, handleCut, handlePaste, handleDuplicate, handleDelete, isInputFocused]);
+  }, [isSelected, handleCopy, handleCut, handlePaste, handleDuplicate, handleDelete, getCanPaste, isInputFocused]);
 
   useKeyboardShortcuts(keyCombinations);
 
